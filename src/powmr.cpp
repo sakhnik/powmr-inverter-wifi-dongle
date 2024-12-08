@@ -79,20 +79,70 @@ void publish_float(const char *topic, float var)
     client.publish(topic, buf);
 }
 
+struct RegHandler
+{
+    uint8_t offset;
+    const char *topic;
+    void (*handler)(const char *topic, uint16_t val);
+};
+
+void PublishHex(const char *topic, uint16_t val)
+{
+    auto op_mode = htons(val);
+    char str[16];
+    snprintf(str, 5, "%04x", op_mode);
+    Serial1.printf("%s\t%.*s\n", topic, (int)strlen(str), str);
+    client.publish(topic, str, strlen(str)); 
+}
+
+void PublishDeciUnit(const char *topic, uint16_t val)
+{
+    float v = 0.1 * htons(val);
+    Serial1.printf("%s\t%f\n", topic, v);
+    publish_float(topic, v);
+}
+
+void PublishHalfDeciUnit(const char *topic, uint16_t val)
+{
+    float v = 0.05 * htons(val);
+    Serial1.printf("%s\t%f\n", topic, v);
+    publish_float(topic, v);
+}
+
+void PublishUnit(const char *topic, uint16_t val)
+{
+    float v = htons(val);
+    Serial1.printf("%s\t%f\n", topic, v);
+    publish_float(topic, v);
+}
+
+constexpr const RegHandler REG_HANDLERS[] = {
+    { 0,  "powmr/1/mode",                   PublishHex          },
+    { 1,  "powmr/1/ac_voltage",             PublishDeciUnit     },
+    { 3,  "powmr/1/pv_voltage",             PublishDeciUnit     },
+    { 4,  "powmr/1/pv_power",               PublishUnit         },
+    { 5,  "powmr/1/bat_voltage",            PublishDeciUnit     },
+    { 7,  "powmr/1/bat_charge_current",     PublishUnit         },
+    { 8,  "powmr/1/bat_discharge_current",  PublishUnit         },
+    { 11, "powmr/1/output_power",           PublishUnit         },
+    { 12, "powmr/1/output_load",            PublishHalfDeciUnit },
+};
+
 void query_registers() {
-    auto result = node.readHoldingRegisters(4501, 45);
+    constexpr const int REGNUM = REG_HANDLERS[std::size(REG_HANDLERS) - 1].offset + 1;
+
+    Serial1.println("query_registers");
+    auto result = node.readHoldingRegisters(4501, REGNUM);
     if (result == node.ku8MBSuccess)
     {
-        //ctemp = (long)node.getResponseBuffer(0x11) / 100.0f; 
-        //dtostrf(ctemp, 2, 3, buf );
-        ////mqtt_location = MQTT_ROOT + "/" + POWMR_DEVICE_ID + "/ctemp";
-        //client.publish("powmr/1/ctemp", buf);
+        uint16_t data[REGNUM];
+        for (uint8_t i = 0; i < REGNUM; ++i) {
+            data[i] = node.getResponseBuffer(i);
+        }
 
-        float bvoltage = htons(node.getResponseBuffer(0x5)) / 10.0;
-        Serial1.print("bvoltage=");
-        Serial1.println(bvoltage);
-        publish_float("powmr/1/bvoltage", bvoltage);
-
+        for (auto h : REG_HANDLERS) {
+            h.handler(h.topic, data[h.offset]);
+        }
     }
 }
 
