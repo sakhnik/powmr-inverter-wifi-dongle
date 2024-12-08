@@ -72,6 +72,13 @@ void reconnect() {
     }
 }
 
+void publish_float(const char *topic, float var)
+{
+    char buf[11];
+    snprintf(buf, 10,"%3.1f", var);
+    client.publish(topic, buf);
+}
+
 void query_registers() {
     auto result = node.readHoldingRegisters(4501, 45);
     if (result == node.ku8MBSuccess)
@@ -84,7 +91,7 @@ void query_registers() {
         float bvoltage = htons(node.getResponseBuffer(0x5)) / 10.0;
         Serial1.print("bvoltage=");
         Serial1.println(bvoltage);
-        //publish_float("powmr/1/bvoltage", bvoltage);
+        publish_float("powmr/1/bvoltage", bvoltage);
 
     }
 }
