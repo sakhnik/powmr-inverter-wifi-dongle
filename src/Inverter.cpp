@@ -2,6 +2,9 @@
 #include "secrets.h"
 #include <ModbusMaster.h>
 #include <ESP8266WiFi.h>
+#include <ArduinoJson.hpp>
+
+namespace AJ = ArduinoJson;
 
 namespace {
  
@@ -12,23 +15,22 @@ void Announce(const char *sensor, const char *name, const char *unit, const char
     char discovery_topic[64];
     sprintf(discovery_topic, "homeassistant/sensor/powmr1/%s/config", sensor);
 
+    AJ::JsonDocument doc;
+    auto device = doc["device"].to<AJ::JsonObject>();
+    device["identifiers"][0] = "powmr1";
+    device["name"] = "Inverter";
+    device["model"] = "2.4";
+    device["manufacturer"] = "PowMr";
+    doc["name"] = name;
+    doc["state_topic"] = TOPIC;
+    doc["unit_of_measurement"] = unit;
+    doc["value_template"] = value_template;
+    doc["device_class"] = device_class;
+    doc["unique_id"] = String("powmr1_") + sensor;
     String payload;
     payload.reserve(1024);
-    payload = "{\"device\":{\"identifiers\":[\"powmr1\"],\"name\":\"Inverter\",\"model\":\"2.4\",\"manufacturer\":\"PowMr\"}";
-    payload += ",\"name\":\"";
-    payload += name;
-    payload += "\",\"state_topic\":\"";
-    payload += TOPIC;
-    payload += "\",\"unit_of_measurement\":\"";
-    payload += unit;
-    payload += "\",\"value_template\":\"";
-    payload += value_template;
-    payload += "\",\"device_class\":\"";
-    payload += device_class;
-    payload += "\",\"unique_id\":\"";
-    payload += "powmr1_";
-    payload += sensor;
-    payload += "\"}";
+    serializeJson(doc, payload);
+
     bool res = client.publish(discovery_topic, payload.c_str(), true);
     if (!res) {
         Serial1.print("Announce failure: ");
@@ -95,51 +97,42 @@ void Inverter::Reconnect() {
 
 namespace {
 
-void HandleFloat(const char *name, float var, String &payload)
+void HandleFloat(const char *name, float var, AJ::JsonDocument &doc)
 {
-    char buf[16];
-    sprintf(buf, "%3.1f", var);
-    payload += "\"";
-    payload += name;
-    payload += "\":";
-    payload += buf;
+    doc[name] = var;
 }
 
 struct RegHandler
 {
     uint8_t offset;
     const char *name;
-    void (*handler)(const char *name, uint16_t val, String &);
+    void (*handler)(const char *name, uint16_t val, AJ::JsonDocument &);
 };
 
-void HandleHex(const char *name, uint16_t val, String &payload)
+void HandleHex(const char *name, uint16_t val, AJ::JsonDocument &doc)
 {
     auto op_mode = htons(val);
     char str[16];
     sprintf(str, "%04x", op_mode);
-    payload += "\"";
-    payload += name;
-    payload += "\":\"";
-    payload += str;
-    payload += "\"";
+    doc[name] = str;
 }
 
-void HandleDeciUnit(const char *name, uint16_t val, String &payload)
+void HandleDeciUnit(const char *name, uint16_t val, AJ::JsonDocument &doc)
 {
     float v = 0.1 * htons(val);
-    HandleFloat(name, v, payload);
+    HandleFloat(name, v, doc);
 }
 
-void HandleHalfDeciUnit(const char *name, uint16_t val, String &payload)
+void HandleHalfDeciUnit(const char *name, uint16_t val, AJ::JsonDocument &doc)
 {
     float v = 0.05 * htons(val);
-    HandleFloat(name, v, payload);
+    HandleFloat(name, v, doc);
 }
 
-void HandleUnit(const char *name, uint16_t val, String &payload)
+void HandleUnit(const char *name, uint16_t val, AJ::JsonDocument &doc)
 {
     float v = htons(val);
-    HandleFloat(name, v, payload);
+    HandleFloat(name, v, doc);
 }
 
 constexpr const RegHandler REG_HANDLERS[] = {
@@ -168,18 +161,16 @@ void Inverter::QueryRegisters()
             data[i] = _node.getResponseBuffer(i);
         }
 
-        String payload;
-        payload.reserve(256);
-        payload = "{";
-
+        using namespace ArduinoJson;
+        JsonDocument doc;
         for (const auto &h : REG_HANDLERS) {
-            if (&h != REG_HANDLERS) {
-                payload += ",";
-            }
-            h.handler(h.name, data[h.offset], payload);
+            h.handler(h.name, data[h.offset], doc);
         }
 
-        payload += "}";
+        String payload;
+        payload.reserve(256);
+        serializeJson(doc, payload);
+
         _client.publish(TOPIC, payload.c_str());
     }
 }
