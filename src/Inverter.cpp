@@ -86,9 +86,9 @@ void Inverter::Reconnect() {
 
     Announce("mode", "Mode", "", "{{ value_json.mode }}", "None", _client);
     Announce("ac_voltage", "AC Voltage", "V", "{{ value_json.ac_voltage | round }}", "voltage", _client);
-    Announce("pv_volage", "PV Voltage", "V", "{{ value_json.pv_voltage | round }}", "voltage", _client);
-    Announce("pv_power", "PV Power", "W", "{{ value_json.pv_power | round }}", "power", _client);
-    Announce("bat_voltage", "Bat Voltage", "V", "{{ value_json.bat_voltage | round }}", "voltage", _client);
+    //Announce("pv_volage", "PV Voltage", "V", "{{ value_json.pv_voltage | round }}", "voltage", _client);
+    //Announce("pv_power", "PV Power", "W", "{{ value_json.pv_power | round }}", "power", _client);
+    Announce("bat_voltage", "Bat Voltage", "V", "{{ value_json.bat_voltage | round(1) }}", "voltage", _client);
     Announce("bat_charge_current", "Bat Charge Current", "A", "{{ value_json.bat_charge_current | round(1) }}", "current", _client);
     Announce("bat_discharge_current", "Bat Discharge Current", "A", "{{ value_json.bat_discharge_current | round(1) }}", "current", _client);
     Announce("output_power", "Output Power", "W", "{{ value_json.output_power | round }}", "power", _client);
@@ -138,8 +138,8 @@ void HandleUnit(const char *name, uint16_t val, AJ::JsonDocument &doc)
 constexpr const RegHandler REG_HANDLERS[] = {
     { 0,  "mode",                   HandleHex          },
     { 1,  "ac_voltage",             HandleDeciUnit     },
-    { 3,  "pv_voltage",             HandleDeciUnit     },
-    { 4,  "pv_power",               HandleUnit         },
+    //{ 3,  "pv_voltage",             HandleDeciUnit     },
+    //{ 4,  "pv_power",               HandleUnit         },
     { 5,  "bat_voltage",            HandleDeciUnit     },
     { 7,  "bat_charge_current",     HandleUnit         },
     { 8,  "bat_discharge_current",  HandleUnit         },
