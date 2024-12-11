@@ -23,4 +23,5 @@ private:
 
     void Reconnect();
     void QueryRegisters();
+    void _HandleCallback(char* topic, byte* payload, unsigned int length);
 };
