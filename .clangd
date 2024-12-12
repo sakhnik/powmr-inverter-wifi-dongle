@@ -1,4 +1,7 @@
 CompileFlags:
+  Add:
+    - -include /home/sakhnik/.platformio/packages/framework-arduinoespressif8266/tools/sdk/include/c_types.h
+    - -I/home/sakhnik/.platformio/packages/toolchain-xtensa/xtensa-lx106-elf/include
   Remove:
     - -mlongcalls
     - -mtext-section-literals
