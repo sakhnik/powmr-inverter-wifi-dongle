@@ -17,6 +17,15 @@ namespace {
 
 #define MAX_CURRENT             "total_charging_current"
 
+#define HA_NUMBER(name)         "homeassistant/number/" POWMR "/" name
+#define HA_NUMBER_CONFIG(name)  HA_NUMBER(name) "/config"
+#define HA_NUMBER_SET(name)     HA_NUMBER(name) "/set"
+#define HA_NUMBER_STATE(name)   HA_NUMBER(name) "/state"
+
+#define BULK_VOLTAGE            "bulk_charging_voltage"
+#define FLOATING_VOLTAGE        "floating_charging_voltage"
+#define DC_CUTOFF_VOLTAGE       "low_dc_cutoff_voltage"
+
 #define HA_DEBUG(name)          "homeassistant/debug/" POWMR "/" name
 
 constexpr const char *const TOPIC_SENSOR_STATE = "homeassistant/sensor/" POWMR "/state";
@@ -83,6 +92,84 @@ void AnnounceCurrentSelect(PubSubClient &client)
     }
 }
 
+void AnnounceBulkVoltage(PubSubClient &client)
+{
+    AJ::JsonDocument doc;
+    AddDevice(doc);
+    doc[F("name")] = F("Bulk charging voltage");
+    doc[F("state_topic")] = F(HA_NUMBER_STATE(BULK_VOLTAGE));
+    doc[F("command_topic")] = F(HA_NUMBER_SET(BULK_VOLTAGE));
+    doc[F("unique_id")] = F("powmr1_" BULK_VOLTAGE);
+    doc[F("min")] = 26.8;
+    doc[F("max")] = 29.2;
+    doc[F("step")] = 0.1;
+    doc[F("unit_of_measurement")] = "V";
+    String payload;
+    payload.reserve(1024);
+    serializeJson(doc, payload);
+
+    const char *discovery_topic = HA_NUMBER_CONFIG(BULK_VOLTAGE);
+    bool res = client.publish(discovery_topic, payload.c_str(), true);
+    if (!res) {
+        Serial1.print("Announce failure: ");
+        Serial1.print(discovery_topic);
+        Serial1.print(" ");
+        Serial1.println(res);
+    }
+}
+
+void AnnounceFloatingVoltage(PubSubClient &client)
+{
+    AJ::JsonDocument doc;
+    AddDevice(doc);
+    doc[F("name")] = F("Floating charging voltage");
+    doc[F("state_topic")] = F(HA_NUMBER_STATE(FLOATING_VOLTAGE));
+    doc[F("command_topic")] = F(HA_NUMBER_SET(FLOATING_VOLTAGE));
+    doc[F("unique_id")] = F("powmr1_" FLOATING_VOLTAGE);
+    doc[F("min")] = 26.6;
+    doc[F("max")] = 28.0;
+    doc[F("step")] = 0.1;
+    doc[F("unit_of_measurement")] = "V";
+    String payload;
+    payload.reserve(1024);
+    serializeJson(doc, payload);
+
+    const char *discovery_topic = HA_NUMBER_CONFIG(FLOATING_VOLTAGE);
+    bool res = client.publish(discovery_topic, payload.c_str(), true);
+    if (!res) {
+        Serial1.print("Announce failure: ");
+        Serial1.print(discovery_topic);
+        Serial1.print(" ");
+        Serial1.println(res);
+    }
+}
+
+void AnnounceDcCutoffVoltage(PubSubClient &client)
+{
+    AJ::JsonDocument doc;
+    AddDevice(doc);
+    doc[F("name")] = F("Low DC cut-off voltage");
+    doc[F("state_topic")] = F(HA_NUMBER_STATE(DC_CUTOFF_VOLTAGE));
+    doc[F("command_topic")] = F(HA_NUMBER_SET(DC_CUTOFF_VOLTAGE));
+    doc[F("unique_id")] = F("powmr1_" DC_CUTOFF_VOLTAGE);
+    doc[F("min")] = 20.0;
+    doc[F("max")] = 24.0;
+    doc[F("step")] = 0.1;
+    doc[F("unit_of_measurement")] = "V";
+    String payload;
+    payload.reserve(1024);
+    serializeJson(doc, payload);
+
+    const char *discovery_topic = HA_NUMBER_CONFIG(DC_CUTOFF_VOLTAGE);
+    bool res = client.publish(discovery_topic, payload.c_str(), true);
+    if (!res) {
+        Serial1.print("Announce failure: ");
+        Serial1.print(discovery_topic);
+        Serial1.print(" ");
+        Serial1.println(res);
+    }
+}
+
 } //namespace;
 
 Inverter::Inverter(WiFiClient &wifi, ModbusMaster &node)
@@ -139,6 +226,9 @@ void Inverter::Reconnect() {
     AnnounceSensor("output_power", "Output Power", "W", "{{ value_json.output_power | round }}", "power", _client);
     AnnounceSensor("output_load", "Output Load", "VA", "{{ value_json.output_load | round }}", "apparent_power", _client);
     AnnounceCurrentSelect(_client);
+    AnnounceBulkVoltage(_client);
+    AnnounceFloatingVoltage(_client);
+    AnnounceDcCutoffVoltage(_client);
 }
 
 namespace {
