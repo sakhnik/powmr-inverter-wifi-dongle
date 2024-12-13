@@ -272,6 +272,9 @@ void HandleUnit(const char *name, uint16_t val, AJ::JsonDocument &doc)
 }
 
 constexpr const int OFFSET_MAX_CURRENT = 40;
+constexpr const int OFFSET_BULK_VOLTAGE = 45;
+constexpr const int OFFSET_FLOATING_VOLTAGE = 46;
+constexpr const int OFFSET_CUTOFF_VOLTAGE = 47;
 
 constexpr const RegHandler REG_HANDLERS[] = {
     { 0,  "mode",                   HandleHex           },
@@ -284,6 +287,9 @@ constexpr const RegHandler REG_HANDLERS[] = {
     { 11, "output_power",           HandleUnit          },
     { 12, "output_load",            HandleHalfDeciUnit  },
     { OFFSET_MAX_CURRENT, nullptr,  nullptr             },
+    { OFFSET_BULK_VOLTAGE, nullptr, nullptr             },
+    { OFFSET_FLOATING_VOLTAGE, nullptr, nullptr         },
+    { OFFSET_CUTOFF_VOLTAGE, nullptr, nullptr           },
 };
 
 } //namespace;
@@ -318,6 +324,13 @@ void Inverter::QueryRegisters()
         char buf[16];
         sprintf(buf, "%d", ntohs(data[OFFSET_MAX_CURRENT]));
         _client.publish(HA_SELECT_STATE(MAX_CURRENT), buf);
+
+        sprintf(buf, "%.1f", 0.1 * ntohs(data[OFFSET_BULK_VOLTAGE]));
+        _client.publish(HA_NUMBER_STATE(BULK_VOLTAGE), buf);
+        sprintf(buf, "%.1f", 0.1 * ntohs(data[OFFSET_FLOATING_VOLTAGE]));
+        _client.publish(HA_NUMBER_STATE(FLOATING_VOLTAGE), buf);
+        sprintf(buf, "%.1f", 0.1 * ntohs(data[OFFSET_CUTOFF_VOLTAGE]));
+        _client.publish(HA_NUMBER_STATE(DC_CUTOFF_VOLTAGE), buf);
     }
 }
 
