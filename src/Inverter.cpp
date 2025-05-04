@@ -336,17 +336,45 @@ void Inverter::QueryRegisters()
 
 void Inverter::_HandleCallback(char* topic, byte* payload, unsigned int length)
 {
-    if (!strcmp(topic, HA_SELECT_SET(MAX_CURRENT))) {
-        payload[length] = '\0';
-        uint16_t cc = atoi(reinterpret_cast<const char *>(payload));
-        for (int i = 0; i < 5; ++i) {
-            auto result = _node.writeSingleRegister(5022, cc);
-            if (result == _node.ku8MBSuccess)
-                break;
-            char buf[64];
-            sprintf(buf, "Failed to change charge current: %x", (unsigned)result);
-            _client.publish(HA_DEBUG("log"), buf);
+    using ParserT = uint16_t (*)(const char *);
+
+    struct Setting
+    {
+        const char *topic;
+        uint16_t reg;
+        ParserT parser;
+        const char *msg;
+    };
+
+    ParserT parseInt = [](const char *s) -> uint16_t {
+        return atoi(s);
+    };
+
+    ParserT parseFloat = [](const char *s) -> uint16_t {
+        return atof(s) * 10;
+    };
+
+    const Setting SETTINGS[] = {
+        {HA_SELECT_SET(MAX_CURRENT), 5022, parseInt, "current"},
+        {HA_NUMBER_SET(BULK_VOLTAGE), 5027, parseFloat, "bulk charging voltage"},
+        {HA_NUMBER_SET(FLOATING_VOLTAGE), 5028, parseFloat, "floating charge voltage"},
+        {HA_NUMBER_SET(DC_CUTOFF_VOLTAGE), 5029, parseFloat, "DC cutoff voltage"},
+    };
+
+    for (const auto &setting : SETTINGS) {
+        if (!strcmp(topic, setting.topic)) {
+            payload[length] = '\0';
+            uint16_t cc = setting.parser(reinterpret_cast<const char *>(payload));
+            for (int i = 0; i < 5; ++i) {
+                auto result = _node.writeSingleRegister(setting.reg, cc);
+                if (result == _node.ku8MBSuccess)
+                    return;
+                char buf[64];
+                sprintf(buf, "Failed to change charge current: %x", (unsigned)result);
+                _client.publish(HA_DEBUG("log"), buf);
+            }
+            //_client.publish(publishTopicLog, buf);
+            return;
         }
-        //_client.publish(publishTopicLog, buf);
     }
 }
