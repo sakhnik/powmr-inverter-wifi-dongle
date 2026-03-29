@@ -8,18 +8,19 @@
 #include <ModbusMaster.h>
 
 
-constexpr const char *const OTA_HOSTNAME = "powmr1";
-constexpr const auto POWMR_DEVICE_ID = 5;
+constexpr const char *const OTA_HOSTNAME = "deye1";
+constexpr const auto DEVICE_ID = 1;
 
 WiFiClient espClient;
 ModbusMaster node;
 Inverter inverter{espClient, node};
 
-void setup() {
+void setup()
+{
     pinMode(4, OUTPUT);
     pinMode(5, OUTPUT);
 
-    Serial.begin(2400);
+    Serial.begin(9600);
     Serial1.begin(9600);
     Serial1.println("Booting");
     WiFi.setHostname(OTA_HOSTNAME);
@@ -34,7 +35,7 @@ void setup() {
     Serial1.println(WiFi.localIP());
 
     // Modbus slave ID 1
-    node.begin(POWMR_DEVICE_ID, Serial);
+    node.begin(DEVICE_ID, Serial);
     node.preTransmission([]() {
         digitalWrite(4, HIGH);
         digitalWrite(5, HIGH);
@@ -54,4 +55,5 @@ void setup() {
 void loop() {
     ArduinoOTA.handle();
     inverter.Handle();
+    yield();
 }
