@@ -1,6 +1,6 @@
-# PowMr inverter WiFi dongle
+# Deye inverter WiFi dongle
 
-This firmware allows supervising PowMr invertors with the stock WiFi dongle.
+This firmware allows supervising Deye inverters with the stock WiFi dongle.
 The dongle EB-WF03-01 is powered with ESP8266 chip. It has two UART ports: one for
 programming and interfacing with the invertor, the other one to read the logs.
 
