@@ -19,6 +19,10 @@ Sensor::HandlerT u_word_handler = [](const Sensor &s, const uint16_t *data, AJ::
     doc[s.id] = *data;
 };
 
+Sensor::HandlerT u_word_handler_0_1 = [](const Sensor &s, const uint16_t *data, AJ::JsonDocument &doc) {
+    doc[s.id] = 0.1 * (*data);
+};
+
 Sensor::HandlerT u_word_handler_0_01 = [](const Sensor &s, const uint16_t *data, AJ::JsonDocument &doc) {
     doc[s.id] = 0.01 * (*data);
 };
@@ -28,6 +32,11 @@ Sensor::HandlerT s_word_handler = [](const Sensor &s, const uint16_t *data, AJ::
 };
 
 const Sensor SENSORS[] = {
+    { 108, "pv_daily", "PV Daily", Unit::kWh, DeviceClass::Energy, StateClass::TotalIncreasing, 1, "mdi:solar-power", u_word_handler_0_1 },
+    { 109, "pv1_voltage", "PV1 Voltage", Unit::V, DeviceClass::Voltage, StateClass::Measurement, 1, "mdi:solar-power-variant", u_word_handler_0_1 },
+    { 110, "pv1_current", "PV1 Current", Unit::A, DeviceClass::Current, StateClass::Measurement, 1, "mdi:solar-power-variant", u_word_handler_0_1 },
+    { 111, "pv2_voltage", "PV2 Voltage", Unit::V, DeviceClass::Voltage, StateClass::Measurement, 1, "mdi:solar-power-variant", u_word_handler_0_1 },
+    { 112, "pv2_current", "PV2 Current", Unit::A, DeviceClass::Current, StateClass::Measurement, 1, "mdi:solar-power-variant", u_word_handler_0_1 },
     { 183, "battery_voltage", "Battery Voltage", Unit::V, DeviceClass::Voltage, StateClass::Measurement, 2, "mdi:flash", u_word_handler_0_01 },
     { 184, "battery_soc", "Battery SOC", Unit::Percent, DeviceClass::Battery, StateClass::Measurement, 0, "mdi:battery", u_word_handler },
     { 186, "dc_pv1_power", "PV1 Power", Unit::W, DeviceClass::Power, StateClass::Measurement, 0, "mdi:solar-power-variant", u_word_handler },

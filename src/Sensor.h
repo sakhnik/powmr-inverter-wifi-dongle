@@ -6,34 +6,42 @@
 
 enum class Unit
 {
-    V,
     Percent,
+    V,
+    A,
     W,
+    kWh,
 };
 
 inline const char* ToString(Unit u)
 {
     switch (u) {
     case Unit::V: return "V";
+    case Unit::A: return "A";
     case Unit::Percent: return "%";
     case Unit::W: return "W";
+    case Unit::kWh: return "kWh";
     }
     return "";
 }
 
 enum class DeviceClass
 {
-    Voltage,
     Battery,
+    Voltage,
+    Current,
     Power,
+    Energy,
 };
 
 inline const char* ToString(DeviceClass c)
 {
     switch (c) {
     case DeviceClass::Voltage: return "voltage";
+    case DeviceClass::Current: return "current";
     case DeviceClass::Battery: return "battery";
     case DeviceClass::Power: return "power";
+    case DeviceClass::Energy: return "energy";
     }
     return "";
 }
@@ -41,12 +49,14 @@ inline const char* ToString(DeviceClass c)
 enum class StateClass
 {
     Measurement,
+    TotalIncreasing,
 };
 
 inline const char* ToString(StateClass c)
 {
     switch (c) {
     case StateClass::Measurement: return "measurement";
+    case StateClass::TotalIncreasing: return "total_increasing";
     }
     return "";
 }
