@@ -31,8 +31,14 @@ Sensor::HandlerT s_word_handler = [](const Sensor &s, const uint16_t *data, AJ::
     doc[s.id] = static_cast<int16_t>(*data);
 };
 
+Sensor::HandlerT s_word_handler_0_01 = [](const Sensor &s, const uint16_t *data, AJ::JsonDocument &doc) {
+    doc[s.id] = 0.01 * static_cast<int16_t>(*data);
+};
+
 const Sensor SENSORS[] = {
-    { 108, "pv_daily", "PV Daily", Unit::kWh, DeviceClass::Energy, StateClass::TotalIncreasing, 1, "mdi:solar-power", u_word_handler_0_1 },
+    { 70, "battery_daily_charge", "Battery Daily Charge", Unit::kWh, DeviceClass::Energy, StateClass::TotalIncreasing, 1, "mdi:battery-charging", u_word_handler_0_1 },
+    { 71, "battery_daily_discharge", "Battery Daily Discharge", Unit::kWh, DeviceClass::Energy, StateClass::TotalIncreasing, 1, "mdi:battery-minus", u_word_handler_0_1 },
+    { 108, "pv_daily", "PV Daily Production", Unit::kWh, DeviceClass::Energy, StateClass::TotalIncreasing, 1, "mdi:solar-power", u_word_handler_0_1 },
     { 109, "pv1_voltage", "PV1 Voltage", Unit::V, DeviceClass::Voltage, StateClass::Measurement, 1, "mdi:solar-power-variant", u_word_handler_0_1 },
     { 110, "pv1_current", "PV1 Current", Unit::A, DeviceClass::Current, StateClass::Measurement, 1, "mdi:solar-power-variant", u_word_handler_0_1 },
     { 111, "pv2_voltage", "PV2 Voltage", Unit::V, DeviceClass::Voltage, StateClass::Measurement, 1, "mdi:solar-power-variant", u_word_handler_0_1 },
@@ -41,6 +47,8 @@ const Sensor SENSORS[] = {
     { 184, "battery_soc", "Battery SOC", Unit::Percent, DeviceClass::Battery, StateClass::Measurement, 0, "mdi:battery", u_word_handler },
     { 186, "dc_pv1_power", "PV1 Power", Unit::W, DeviceClass::Power, StateClass::Measurement, 0, "mdi:solar-power-variant", u_word_handler },
     { 187, "dc_pv2_power", "PV2 Power", Unit::W, DeviceClass::Power, StateClass::Measurement, 0, "mdi:solar-power-variant", u_word_handler },
+    { 190, "battery_power", "Battery Power", Unit::W, DeviceClass::Power, StateClass::Measurement, 0, "mdi:lightning-bolt", s_word_handler },
+    { 191, "battery_current", "Battery Current", Unit::A, DeviceClass::Current, StateClass::Measurement, 2, "mdi:current_dc", s_word_handler_0_01 },
 };
 
 void AddDevice(AJ::JsonDocument &doc)
