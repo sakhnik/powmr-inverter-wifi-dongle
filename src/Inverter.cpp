@@ -74,6 +74,7 @@ void AnnounceSensor(const Sensor &sensor, PubSubClient &client)
     doc["device_class"] = ToString(sensor.device_class);
     doc["state_class"] = ToString(sensor.state_class);
     doc["unique_id"] = std::string(INSTANCE "_") + sensor.id;
+    doc["icon"] = sensor.icon;
     std::string payload;
     payload.reserve(1024);
     serializeJson(doc, payload);
