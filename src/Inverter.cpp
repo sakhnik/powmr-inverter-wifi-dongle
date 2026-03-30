@@ -1,9 +1,11 @@
 #include "Inverter.h"
+#include "Sensor.h"
 #include "secrets.h"
 #include "Log.h"
 #include <ModbusMaster.h>
 #include <ESP8266WiFi.h>
-#include <ArduinoJson.hpp>
+#include <ArduinoJson.h>
+#include <string>
 
 namespace AJ = ArduinoJson;
 
@@ -11,49 +13,51 @@ namespace {
  
 #define INSTANCE "deye1"
 
-#define HA_SELECT(name)         "homeassistant/select/" INSTANCE "/" name
-#define HA_SELECT_CONFIG(name)  HA_SELECT(name) "/config"
-#define HA_SELECT_SET(name)     HA_SELECT(name) "/set"
-#define HA_SELECT_STATE(name)   HA_SELECT(name) "/state"
-
-#define MAX_CURRENT             "total_charging_current"
-
-#define HA_NUMBER(name)         "homeassistant/number/" INSTANCE "/" name
-#define HA_NUMBER_CONFIG(name)  HA_NUMBER(name) "/config"
-#define HA_NUMBER_SET(name)     HA_NUMBER(name) "/set"
-#define HA_NUMBER_STATE(name)   HA_NUMBER(name) "/state"
-
-#define BULK_VOLTAGE            "bulk_charging_voltage"
-#define FLOATING_VOLTAGE        "floating_charging_voltage"
-#define DC_CUTOFF_VOLTAGE       "low_dc_cutoff_voltage"
-
-#define HA_DEBUG(name)          "homeassistant/debug/" INSTANCE "/" name
-
 constexpr const char *const TOPIC_SENSOR_STATE = "homeassistant/sensor/" INSTANCE "/state";
+
+Sensor::HandlerT u_word_handler = [](const Sensor &s, const uint16_t *data, AJ::JsonDocument &doc) {
+    doc[s.id] = *data;
+};
+
+Sensor::HandlerT u_word_handler_0_01 = [](const Sensor &s, const uint16_t *data, AJ::JsonDocument &doc) {
+    doc[s.id] = 0.01 * (*data);
+};
+
+Sensor::HandlerT s_word_handler = [](const Sensor &s, const uint16_t *data, AJ::JsonDocument &doc) {
+    doc[s.id] = static_cast<int16_t>(*data);
+};
+
+const Sensor SENSORS[] = {
+    { 183, "battery_voltage", "Battery Voltage", Unit::V, DeviceClass::Voltage, StateClass::Measurement, 2, "mdi:flash", u_word_handler_0_01 },
+    { 184, "battery_soc", "Battery SOC", Unit::Percent, DeviceClass::Battery, StateClass::Measurement, 0, "mdi:battery", u_word_handler },
+    { 186, "dc_pv1_power", "PV1 Power", Unit::W, DeviceClass::Power, StateClass::Measurement, 0, "mdi:solar-power-variant", u_word_handler },
+    { 187, "dc_pv2_power", "PV2 Power", Unit::W, DeviceClass::Power, StateClass::Measurement, 0, "mdi:solar-power-variant", u_word_handler },
+};
 
 void AddDevice(AJ::JsonDocument &doc)
 {
-    auto device = doc[F("device")].to<AJ::JsonObject>();
+    auto device = doc["device"].to<AJ::JsonObject>();
     device["identifiers"][0] = INSTANCE;
     device["name"] = "Inverter";
     device["model"] = "2.4";
     device["manufacturer"] = "Deye";
 }
 
-void AnnounceSensor(const char *sensor, const char *name, const char *unit, const char *value_template, const char *device_class, PubSubClient &client)
+void AnnounceSensor(const Sensor &sensor, PubSubClient &client)
 {
     char discovery_topic[64];
-    sprintf(discovery_topic, "homeassistant/sensor/" INSTANCE "/%s/config", sensor);
+    sprintf(discovery_topic, "homeassistant/sensor/" INSTANCE "/%s/config", sensor.id);
 
     AJ::JsonDocument doc;
     AddDevice(doc);
-    doc["name"] = name;
+    doc["name"] = sensor.name;
     doc["state_topic"] = TOPIC_SENSOR_STATE;
-    doc["unit_of_measurement"] = unit;
-    doc["value_template"] = value_template;
-    doc["device_class"] = device_class;
-    doc["unique_id"] = String(INSTANCE "_") + sensor;
-    String payload;
+    doc["unit_of_measurement"] = ToString(sensor.unit_of_measurement);
+    doc["value_template"] = "{{ value_json." + std::string{sensor.id} + " }}";
+    doc["device_class"] = ToString(sensor.device_class);
+    doc["state_class"] = ToString(sensor.state_class);
+    doc["unique_id"] = std::string(INSTANCE "_") + sensor.id;
+    std::string payload;
     payload.reserve(1024);
     serializeJson(doc, payload);
 
@@ -65,111 +69,6 @@ void AnnounceSensor(const char *sensor, const char *name, const char *unit, cons
         Serial1.println(res);
     }
 }
-
-//void AnnounceCurrentSelect(PubSubClient &client)
-//{
-//    AJ::JsonDocument doc;
-//    AddDevice(doc);
-//    doc[F("name")] = F("Total charging current");
-//    doc[F("state_topic")] = F(HA_SELECT_STATE(MAX_CURRENT));
-//    doc[F("command_topic")] = F(HA_SELECT_SET(MAX_CURRENT));
-//    auto options = doc[F("options")].to<AJ::JsonArray>();
-//    options[0] = F("0");
-//    options[1] = F("10");
-//    options[2] = F("20");
-//    options[3] = F("30");
-//    doc[F("unique_id")] = F(INSTANCE "_" MAX_CURRENT);
-//    String payload;
-//    payload.reserve(1024);
-//    serializeJson(doc, payload);
-//
-//    const char *discovery_topic = HA_SELECT_CONFIG(MAX_CURRENT);
-//    bool res = client.publish(discovery_topic, payload.c_str(), true);
-//    if (!res) {
-//        Serial1.print("Announce failure: ");
-//        Serial1.print(discovery_topic);
-//        Serial1.print(" ");
-//        Serial1.println(res);
-//    }
-//}
-//
-//void AnnounceBulkVoltage(PubSubClient &client)
-//{
-//    AJ::JsonDocument doc;
-//    AddDevice(doc);
-//    doc[F("name")] = F("Bulk charging voltage");
-//    doc[F("state_topic")] = F(HA_NUMBER_STATE(BULK_VOLTAGE));
-//    doc[F("command_topic")] = F(HA_NUMBER_SET(BULK_VOLTAGE));
-//    doc[F("unique_id")] = F(INSTANCE "_" BULK_VOLTAGE);
-//    doc[F("min")] = 26.8;
-//    doc[F("max")] = 29.2;
-//    doc[F("step")] = 0.1;
-//    doc[F("unit_of_measurement")] = "V";
-//    String payload;
-//    payload.reserve(1024);
-//    serializeJson(doc, payload);
-//
-//    const char *discovery_topic = HA_NUMBER_CONFIG(BULK_VOLTAGE);
-//    bool res = client.publish(discovery_topic, payload.c_str(), true);
-//    if (!res) {
-//        Serial1.print("Announce failure: ");
-//        Serial1.print(discovery_topic);
-//        Serial1.print(" ");
-//        Serial1.println(res);
-//    }
-//}
-//
-//void AnnounceFloatingVoltage(PubSubClient &client)
-//{
-//    AJ::JsonDocument doc;
-//    AddDevice(doc);
-//    doc[F("name")] = F("Floating charging voltage");
-//    doc[F("state_topic")] = F(HA_NUMBER_STATE(FLOATING_VOLTAGE));
-//    doc[F("command_topic")] = F(HA_NUMBER_SET(FLOATING_VOLTAGE));
-//    doc[F("unique_id")] = F(INSTANCE "_" FLOATING_VOLTAGE);
-//    doc[F("min")] = 26.6;
-//    doc[F("max")] = 28.0;
-//    doc[F("step")] = 0.1;
-//    doc[F("unit_of_measurement")] = "V";
-//    String payload;
-//    payload.reserve(1024);
-//    serializeJson(doc, payload);
-//
-//    const char *discovery_topic = HA_NUMBER_CONFIG(FLOATING_VOLTAGE);
-//    bool res = client.publish(discovery_topic, payload.c_str(), true);
-//    if (!res) {
-//        Serial1.print("Announce failure: ");
-//        Serial1.print(discovery_topic);
-//        Serial1.print(" ");
-//        Serial1.println(res);
-//    }
-//}
-//
-//void AnnounceDcCutoffVoltage(PubSubClient &client)
-//{
-//    AJ::JsonDocument doc;
-//    AddDevice(doc);
-//    doc[F("name")] = F("Low DC cut-off voltage");
-//    doc[F("state_topic")] = F(HA_NUMBER_STATE(DC_CUTOFF_VOLTAGE));
-//    doc[F("command_topic")] = F(HA_NUMBER_SET(DC_CUTOFF_VOLTAGE));
-//    doc[F("unique_id")] = F(INSTANCE "_" DC_CUTOFF_VOLTAGE);
-//    doc[F("min")] = 20.0;
-//    doc[F("max")] = 24.0;
-//    doc[F("step")] = 0.1;
-//    doc[F("unit_of_measurement")] = "V";
-//    String payload;
-//    payload.reserve(1024);
-//    serializeJson(doc, payload);
-//
-//    const char *discovery_topic = HA_NUMBER_CONFIG(DC_CUTOFF_VOLTAGE);
-//    bool res = client.publish(discovery_topic, payload.c_str(), true);
-//    if (!res) {
-//        Serial1.print("Announce failure: ");
-//        Serial1.print(discovery_topic);
-//        Serial1.print(" ");
-//        Serial1.println(res);
-//    }
-//}
 
 } //namespace;
 
@@ -202,7 +101,8 @@ void Inverter::Handle()
     _timer.tick();
 }
 
-void Inverter::Reconnect() {
+void Inverter::Reconnect()
+{
     // Loop until we're reconnected
     while (!_client.connected()) {
         Serial1.print("Attempting MQTT connection...");
@@ -217,12 +117,13 @@ void Inverter::Reconnect() {
         }
     }
 
+    for (const auto &sensor : SENSORS) {
+        AnnounceSensor(sensor, _client);
+    }
+
     //AnnounceSensor("mode", "Mode", "", "{{ value_json.mode }}", "None", _client);
     //AnnounceSensor("ac_voltage", "AC Voltage", "V", "{{ value_json.ac_voltage | round }}", "voltage", _client);
     //Announce("pv_volage", "PV Voltage", "V", "{{ value_json.pv_voltage | round }}", "voltage", _client);
-    //Announce("pv_power", "PV Power", "W", "{{ value_json.pv_power | round }}", "power", _client);
-    AnnounceSensor("battery_voltage", "Battery Voltage", "V", "{{ value_json.battery_voltage | round(1) }}", "voltage", _client);
-    AnnounceSensor("battery_soc", "Battery SOC", "%", "{{ value_json.battery_soc | round }}", "battery", _client);
     //AnnounceSensor("bat_charge_current", "Bat Charge Current", "A", "{{ value_json.bat_charge_current | round(1) }}", "current", _client);
     //AnnounceSensor("bat_discharge_current", "Bat Discharge Current", "A", "{{ value_json.bat_discharge_current | round(1) }}", "current", _client);
     //AnnounceSensor("output_power", "Output Power", "W", "{{ value_json.output_power | round }}", "power", _client);
@@ -233,115 +134,40 @@ void Inverter::Reconnect() {
     //AnnounceDcCutoffVoltage(_client);
 }
 
-namespace {
-
-void HandleFloat(const char *name, float var, AJ::JsonDocument &doc)
-{
-    doc[name] = var;
-}
-
-struct RegHandler
-{
-    uint8_t offset;
-    const char *name;
-    void (*handler)(const char *name, uint16_t val, AJ::JsonDocument &);
-};
-
-void HandleHex(const char *name, uint16_t val, AJ::JsonDocument &doc)
-{
-    auto op_mode = ntohs(val);
-    char str[16];
-    sprintf(str, "%04x", op_mode);
-    doc[name] = str;
-}
-
-void HandleDeciUnit(const char *name, uint16_t val, AJ::JsonDocument &doc)
-{
-    float v = 0.1 * ntohs(val);
-    HandleFloat(name, v, doc);
-}
-
-void HandleCentiUnit(const char *name, uint16_t val, AJ::JsonDocument &doc)
-{
-    float v = 0.01 * ntohs(val);
-    HandleFloat(name, v, doc);
-}
-
-void HandleHalfDeciUnit(const char *name, uint16_t val, AJ::JsonDocument &doc)
-{
-    float v = 0.05 * ntohs(val);
-    HandleFloat(name, v, doc);
-}
-
-void HandleUnit(const char *name, uint16_t val, AJ::JsonDocument &doc)
-{
-    float v = ntohs(val);
-    HandleFloat(name, v, doc);
-}
-
-constexpr const int OFFSET_MAX_CURRENT = 40;
-constexpr const int OFFSET_BULK_VOLTAGE = 45;
-constexpr const int OFFSET_FLOATING_VOLTAGE = 46;
-constexpr const int OFFSET_CUTOFF_VOLTAGE = 47;
-
-constexpr const RegHandler REG_HANDLERS[] = {
-    //{ 0,  "mode",                   HandleHex           },
-    //{ 1,  "ac_voltage",             HandleDeciUnit      },
-    ////{ 3,  "pv_voltage",             HandleDeciUnit     },
-    ////{ 4,  "pv_power",               HandleUnit         },
-    //{ 7,  "bat_charge_current",     HandleUnit          },
-    //{ 8,  "bat_discharge_current",  HandleUnit          },
-    //{ 11, "output_power",           HandleUnit          },
-    //{ 12, "output_load",            HandleHalfDeciUnit  },
-    //{ OFFSET_MAX_CURRENT, nullptr,  nullptr             },
-    //{ OFFSET_BULK_VOLTAGE, nullptr, nullptr             },
-    //{ OFFSET_FLOATING_VOLTAGE, nullptr, nullptr         },
-    //{ OFFSET_CUTOFF_VOLTAGE, nullptr, nullptr           },
-    { 0, "battery_voltage", HandleCentiUnit },
-    { 1, "battery_soc", HandleUnit },
-    
-};
-
-} //namespace;
-
 void Inverter::QueryRegisters()
 {
     Log::Info("QueryRegisters\n");
-    constexpr const int REGNUM = REG_HANDLERS[std::size(REG_HANDLERS) - 1].offset + 1;
 
-    auto result = _node.readHoldingRegisters(183, REGNUM);
-    if (result == _node.ku8MBSuccess) {
-        Log::Info("success\n");
-        uint16_t data[REGNUM];
-        for (uint8_t i = 0; i < REGNUM; ++i) {
-            data[i] = _node.getResponseBuffer(i);
-        }
+    for (const auto &sensor : SENSORS) {
+        auto result = _node.readHoldingRegisters(sensor.address, 1);
+        if (result == _node.ku8MBSuccess) {
+            uint16_t data = _node.getResponseBuffer(0);
 
-        {
-            using namespace ArduinoJson;
-            JsonDocument doc;
-            for (const auto &h : REG_HANDLERS) {
-                if (h.handler)
-                    h.handler(h.name, data[h.offset], doc);
+            {
+                using namespace ArduinoJson;
+                JsonDocument doc;
+                if (sensor.handler)
+                    sensor.handler(sensor, &data, doc);
+
+                std::string payload;
+                payload.reserve(256);
+                serializeJson(doc, payload);
+
+                _client.publish(TOPIC_SENSOR_STATE, payload.c_str());
+                Log::Info(payload.c_str());
             }
 
-            String payload;
-            payload.reserve(256);
-            serializeJson(doc, payload);
+            //char buf[16];
+            //sprintf(buf, "%d", ntohs(data[OFFSET_MAX_CURRENT]));
+            //_client.publish(HA_SELECT_STATE(MAX_CURRENT), buf);
 
-            _client.publish(TOPIC_SENSOR_STATE, payload.c_str());
+            //sprintf(buf, "%.1f", 0.1 * ntohs(data[OFFSET_BULK_VOLTAGE]));
+            //_client.publish(HA_NUMBER_STATE(BULK_VOLTAGE), buf);
+            //sprintf(buf, "%.1f", 0.1 * ntohs(data[OFFSET_FLOATING_VOLTAGE]));
+            //_client.publish(HA_NUMBER_STATE(FLOATING_VOLTAGE), buf);
+            //sprintf(buf, "%.1f", 0.1 * ntohs(data[OFFSET_CUTOFF_VOLTAGE]));
+            //_client.publish(HA_NUMBER_STATE(DC_CUTOFF_VOLTAGE), buf);
         }
-
-        //char buf[16];
-        //sprintf(buf, "%d", ntohs(data[OFFSET_MAX_CURRENT]));
-        //_client.publish(HA_SELECT_STATE(MAX_CURRENT), buf);
-
-        //sprintf(buf, "%.1f", 0.1 * ntohs(data[OFFSET_BULK_VOLTAGE]));
-        //_client.publish(HA_NUMBER_STATE(BULK_VOLTAGE), buf);
-        //sprintf(buf, "%.1f", 0.1 * ntohs(data[OFFSET_FLOATING_VOLTAGE]));
-        //_client.publish(HA_NUMBER_STATE(FLOATING_VOLTAGE), buf);
-        //sprintf(buf, "%.1f", 0.1 * ntohs(data[OFFSET_CUTOFF_VOLTAGE]));
-        //_client.publish(HA_NUMBER_STATE(DC_CUTOFF_VOLTAGE), buf);
     }
 }
 

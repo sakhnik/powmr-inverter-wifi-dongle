@@ -52,7 +52,8 @@ void setup()
     inverter.Setup();
 }
 
-void loop() {
+void loop()
+{
     ArduinoOTA.handle();
     inverter.Handle();
     yield();
