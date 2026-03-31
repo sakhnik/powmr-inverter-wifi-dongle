@@ -163,24 +163,15 @@ void Inverter::QueryRegisters()
 {
     Log::Info("QueryRegisters\n");
 
+    using namespace ArduinoJson;
+    JsonDocument doc;
+
     for (const auto &sensor : SENSORS) {
         auto result = _node.readHoldingRegisters(sensor.address, 1);
         if (result == _node.ku8MBSuccess) {
             uint16_t data = _node.getResponseBuffer(0);
-
-            {
-                using namespace ArduinoJson;
-                JsonDocument doc;
-                if (sensor.handler)
-                    sensor.handler(sensor, &data, doc);
-
-                std::string payload;
-                payload.reserve(256);
-                serializeJson(doc, payload);
-
-                _client.publish(TOPIC_SENSOR_STATE, payload.c_str());
-                Log::Info(payload.c_str());
-            }
+            if (sensor.handler)
+                sensor.handler(sensor, &data, doc);
 
             //char buf[16];
             //sprintf(buf, "%d", ntohs(data[OFFSET_MAX_CURRENT]));
@@ -194,6 +185,13 @@ void Inverter::QueryRegisters()
             //_client.publish(HA_NUMBER_STATE(DC_CUTOFF_VOLTAGE), buf);
         }
     }
+
+    std::string payload;
+    payload.reserve(256);
+    serializeJson(doc, payload);
+
+    _client.publish(TOPIC_SENSOR_STATE, payload.c_str());
+    Log::Info(payload.c_str());
 }
 
 void Inverter::_HandleCallback(char* topic, byte* payload, unsigned int length)
