@@ -41,5 +41,5 @@ discovered added to the system.
 
 ## Related projects
 
-  - [odya/esphome-powmr-hybrid-inverter](https://github.com/odya/esphome-powmr-hybrid-inverter)
   - [mihaigsm2003/Deye2mqtt-Read-data-from-Deye-Sunsynk](https://github.com/mihaigsm2003/Deye2mqtt-Read-data-from-Deye-Sunsynk)
+  - [Lewa-Reka/esphome-deye-inverter](https://github.com/Lewa-Reka/esphome-deye-inverter)
