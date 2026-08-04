@@ -13,7 +13,7 @@ namespace {
  
 #define INSTANCE "deye1"
 
-constexpr const char *const TOPIC_SENSOR_STATE = "homeassistant/sensor/" INSTANCE "/state";
+constexpr const char *const TOPIC_SENSOR_STATE = INSTANCE "/state";
 
 Sensor::HandlerT u_word_handler = [](const Sensor &s, uint16_t data, AJ::JsonDocument &doc) {
     doc[s.id] = data;
