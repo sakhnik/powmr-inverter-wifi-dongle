@@ -15,24 +15,24 @@ namespace {
 
 constexpr const char *const TOPIC_SENSOR_STATE = "homeassistant/sensor/" INSTANCE "/state";
 
-Sensor::HandlerT u_word_handler = [](const Sensor &s, const uint16_t *data, AJ::JsonDocument &doc) {
-    doc[s.id] = *data;
+Sensor::HandlerT u_word_handler = [](const Sensor &s, uint16_t data, AJ::JsonDocument &doc) {
+    doc[s.id] = data;
 };
 
-Sensor::HandlerT u_word_handler_0_1 = [](const Sensor &s, const uint16_t *data, AJ::JsonDocument &doc) {
-    doc[s.id] = 0.1 * (*data);
+Sensor::HandlerT u_word_handler_0_1 = [](const Sensor &s, uint16_t data, AJ::JsonDocument &doc) {
+    doc[s.id] = 0.1 * data;
 };
 
-Sensor::HandlerT u_word_handler_0_01 = [](const Sensor &s, const uint16_t *data, AJ::JsonDocument &doc) {
-    doc[s.id] = 0.01 * (*data);
+Sensor::HandlerT u_word_handler_0_01 = [](const Sensor &s, uint16_t data, AJ::JsonDocument &doc) {
+    doc[s.id] = 0.01 * data;
 };
 
-Sensor::HandlerT s_word_handler = [](const Sensor &s, const uint16_t *data, AJ::JsonDocument &doc) {
-    doc[s.id] = static_cast<int16_t>(*data);
+Sensor::HandlerT s_word_handler = [](const Sensor &s, uint16_t data, AJ::JsonDocument &doc) {
+    doc[s.id] = static_cast<int16_t>(data);
 };
 
-Sensor::HandlerT s_word_handler_0_01 = [](const Sensor &s, const uint16_t *data, AJ::JsonDocument &doc) {
-    doc[s.id] = 0.01 * static_cast<int16_t>(*data);
+Sensor::HandlerT s_word_handler_0_01 = [](const Sensor &s, uint16_t data, AJ::JsonDocument &doc) {
+    doc[s.id] = 0.01 * static_cast<int16_t>(data);
 };
 
 const Sensor SENSORS[] = {
@@ -146,13 +146,6 @@ void Inverter::Reconnect()
         AnnounceSensor(sensor, _client);
     }
 
-    //AnnounceSensor("mode", "Mode", "", "{{ value_json.mode }}", "None", _client);
-    //AnnounceSensor("ac_voltage", "AC Voltage", "V", "{{ value_json.ac_voltage | round }}", "voltage", _client);
-    //Announce("pv_volage", "PV Voltage", "V", "{{ value_json.pv_voltage | round }}", "voltage", _client);
-    //AnnounceSensor("bat_charge_current", "Bat Charge Current", "A", "{{ value_json.bat_charge_current | round(1) }}", "current", _client);
-    //AnnounceSensor("bat_discharge_current", "Bat Discharge Current", "A", "{{ value_json.bat_discharge_current | round(1) }}", "current", _client);
-    //AnnounceSensor("output_power", "Output Power", "W", "{{ value_json.output_power | round }}", "power", _client);
-    //AnnounceSensor("output_load", "Output Load", "VA", "{{ value_json.output_load | round }}", "apparent_power", _client);
     //AnnounceCurrentSelect(_client);
     //AnnounceBulkVoltage(_client);
     //AnnounceFloatingVoltage(_client);
@@ -166,24 +159,32 @@ void Inverter::QueryRegisters()
     using namespace ArduinoJson;
     JsonDocument doc;
 
-    for (const auto &sensor : SENSORS) {
-        auto result = _node.readHoldingRegisters(sensor.address, 1);
-        if (result == _node.ku8MBSuccess) {
-            uint16_t data = _node.getResponseBuffer(0);
-            if (sensor.handler)
-                sensor.handler(sensor, &data, doc);
+    // Group adjacent registers into bunches
+    constexpr const uint16_t MAX_REGISTERS_PER_READ = 16;
 
-            //char buf[16];
-            //sprintf(buf, "%d", ntohs(data[OFFSET_MAX_CURRENT]));
-            //_client.publish(HA_SELECT_STATE(MAX_CURRENT), buf);
+    for (size_t first = 0; first < std::size(SENSORS); ) {
+        size_t last = first;
 
-            //sprintf(buf, "%.1f", 0.1 * ntohs(data[OFFSET_BULK_VOLTAGE]));
-            //_client.publish(HA_NUMBER_STATE(BULK_VOLTAGE), buf);
-            //sprintf(buf, "%.1f", 0.1 * ntohs(data[OFFSET_FLOATING_VOLTAGE]));
-            //_client.publish(HA_NUMBER_STATE(FLOATING_VOLTAGE), buf);
-            //sprintf(buf, "%.1f", 0.1 * ntohs(data[OFFSET_CUTOFF_VOLTAGE]));
-            //_client.publish(HA_NUMBER_STATE(DC_CUTOFF_VOLTAGE), buf);
+        while (last + 1 < std::size(SENSORS)) {
+            uint16_t prev = SENSORS[last].address;
+            uint16_t next = SENSORS[last + 1].address;
+
+            if (next - prev >= 3 || next - SENSORS[first].address + 1 > MAX_REGISTERS_PER_READ)
+                break;
+
+            ++last;
         }
+
+        uint16_t start = SENSORS[first].address;
+        uint16_t count = SENSORS[last].address - start + 1;
+
+        if (_node.readHoldingRegisters(start, count) == _node.ku8MBSuccess) {
+            for (size_t i = first; i <= last; ++i) {
+                SENSORS[i].handler(SENSORS[i], _node.getResponseBuffer(SENSORS[i].address - start), doc);
+            }
+        }
+
+        first = last + 1;
     }
 
     std::string payload;

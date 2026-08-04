@@ -63,7 +63,7 @@ inline const char* ToString(StateClass c)
 
 struct Sensor
 {
-    using HandlerT = std::function<void(const Sensor &, const uint16_t *, ArduinoJson::JsonDocument &)>;
+    using HandlerT = std::function<void(const Sensor &, uint16_t, ArduinoJson::JsonDocument &)>;
 
     uint16_t address;
     const char *id;
