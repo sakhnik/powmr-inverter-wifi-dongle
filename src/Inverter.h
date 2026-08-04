@@ -23,5 +23,6 @@ private:
 
     void Reconnect();
     void QueryRegisters();
+    void QueryTou();
     void _HandleCallback(char* topic, byte* payload, unsigned int length);
 };

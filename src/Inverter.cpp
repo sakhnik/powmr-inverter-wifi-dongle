@@ -14,6 +14,8 @@ namespace {
 #define INSTANCE "deye1"
 
 constexpr const char *const TOPIC_SENSOR_STATE = INSTANCE "/state";
+constexpr const char *const TOPIC_TOU_STATE = INSTANCE "/tou/state";
+constexpr const char *const TOPIC_TOU_SET = INSTANCE "/tou/set";
 
 Sensor::HandlerT u_word_handler = [](const Sensor &s, uint16_t data, AJ::JsonDocument &doc) {
     doc[s.id] = data;
@@ -95,6 +97,23 @@ void AnnounceSensor(const Sensor &sensor, PubSubClient &client)
     }
 }
 
+void AnnounceTou(PubSubClient &client)
+{
+    AJ::JsonDocument doc;
+    AddDevice(doc);
+
+    doc["name"] = "TOU Schedule";
+    doc["unique_id"] = INSTANCE "_tou";
+    doc["state_topic"] = TOPIC_TOU_STATE;
+    doc["command_topic"] = TOPIC_TOU_SET;
+    doc["icon"] = "mdi:calendar-clock";
+
+    std::string payload;
+    serializeJson(doc, payload);
+
+    client.publish("homeassistant/text/" INSTANCE "/tou/config", payload.c_str(), true);
+}
+
 } //namespace;
 
 Inverter::Inverter(WiFiClient &wifi, ModbusMaster &node)
@@ -113,6 +132,7 @@ void Inverter::Setup()
     _task = _timer.every(10000, [](void *ctx) {
         Inverter *self = reinterpret_cast<Inverter *>(ctx);
         self->QueryRegisters();
+        self->QueryTou();
         return true;
     }, this);
 }
@@ -134,7 +154,7 @@ void Inverter::Reconnect()
         // Attempt to connect
         if (_client.connect("deye1", Secrets::mqtt_user, Secrets::mqtt_pass)) {
             Serial1.println("connected");
-            _client.subscribe("homeassistant/+/" INSTANCE "/+/set");
+            _client.subscribe(INSTANCE "/+/set");
             // Once connected, publish an announcement...
         } else {
             // Wait 5 seconds before retrying
@@ -145,6 +165,7 @@ void Inverter::Reconnect()
     for (const auto &sensor : SENSORS) {
         AnnounceSensor(sensor, _client);
     }
+    AnnounceTou(_client);
 
     //AnnounceCurrentSelect(_client);
     //AnnounceBulkVoltage(_client);
@@ -195,8 +216,88 @@ void Inverter::QueryRegisters()
     Log::Info(payload.c_str());
 }
 
+namespace Tou {
+    constexpr uint16_t BASE = 250;
+    constexpr size_t SLOTS = 6;
+
+    constexpr uint8_t START = 0;   // 250-255
+    constexpr uint8_t POWER = 6;   // 256-261
+    constexpr uint8_t SOC   = 18;  // 268-273
+    constexpr uint8_t FLAGS = 24;  // 274-279
+
+    constexpr uint8_t REG_COUNT = 26;
+    constexpr uint16_t CHARGE = 0x0001;
+}
+
+void Inverter::QueryTou()
+{
+    AJ::JsonDocument doc;
+    AJ::JsonArray periods = doc.to<AJ::JsonArray>();
+
+    if (_node.readHoldingRegisters(Tou::BASE, Tou::REG_COUNT) == _node.ku8MBSuccess) {
+        for (size_t i = 0; i < Tou::SLOTS; ++i) {
+            auto period = periods.add<AJ::JsonArray>();
+
+            period.add(_node.getResponseBuffer(Tou::FLAGS + i) & Tou::CHARGE);
+            period.add(_node.getResponseBuffer(Tou::START + i));
+            period.add(_node.getResponseBuffer(Tou::SOC + i));
+            period.add(_node.getResponseBuffer(Tou::POWER + i));
+        }
+    }
+
+    std::string payload;
+    serializeJson(doc, payload);
+
+    _client.publish(TOPIC_TOU_STATE, payload.c_str(), true);
+}
+
 void Inverter::_HandleCallback(char* topic, byte* payload, unsigned int length)
 {
+     if (!strcmp(topic, TOPIC_TOU_SET)) {
+         AJ::JsonDocument doc;
+         if (deserializeJson(doc, payload, length))
+             return;
+
+         auto table = doc.as<AJ::JsonArray>();
+         if (table.size() != Tou::SLOTS)
+             return;
+
+         uint16_t start[Tou::SLOTS];
+         uint16_t power[Tou::SLOTS];
+         uint16_t soc[Tou::SLOTS];
+         uint16_t flags[Tou::SLOTS];
+
+         // Preserve unknown flag bits.
+         if (_node.readHoldingRegisters(Tou::BASE + Tou::FLAGS, Tou::SLOTS) != _node.ku8MBSuccess)
+             return;
+
+         for (size_t i = 0; i < Tou::SLOTS; ++i)
+             flags[i] = _node.getResponseBuffer(i);
+
+         for (size_t i = 0; i < Tou::SLOTS; ++i) {
+             auto row = table[i].as<AJ::JsonArray>();
+
+             bool charge = row[0];
+             start[i] = row[1];
+             soc[i] = row[2];
+             power[i] = row[3];
+
+             flags[i] = (flags[i] & ~Tou::CHARGE) | (charge ? Tou::CHARGE : 0);
+         }
+
+         auto writeBlock = [this](uint16_t reg, const uint16_t *values) {
+             _node.beginTransmission(reg);
+             for (size_t i = 0; i < Tou::SLOTS; ++i)
+                 _node.send(values[i]);
+             return _node.writeMultipleRegisters(reg, Tou::SLOTS);
+         };
+
+         if (writeBlock(Tou::BASE + Tou::START, start) != _node.ku8MBSuccess) return;
+         if (writeBlock(Tou::BASE + Tou::POWER, power) != _node.ku8MBSuccess) return;
+         if (writeBlock(Tou::BASE + Tou::SOC, soc) != _node.ku8MBSuccess) return;
+         writeBlock(Tou::BASE + Tou::FLAGS, flags);
+    }
+
     //using ParserT = uint16_t (*)(const char *);
 
     //struct Setting
