@@ -16,6 +16,8 @@ namespace {
 constexpr const char *const TOPIC_SENSOR_STATE = INSTANCE "/state";
 constexpr const char *const TOPIC_TOU_STATE = INSTANCE "/tou/state";
 constexpr const char *const TOPIC_TOU_SET = INSTANCE "/tou/set";
+constexpr const char *const TOPIC_GRID_CHARGING_CURRENT_STATE = INSTANCE "/grid_charging_current/state";
+constexpr const char *const TOPIC_GRID_CHARGING_CURRENT_SET = INSTANCE "/grid_charging_current/set";
 
 Sensor::HandlerT u_word_handler = [](const Sensor &s, uint16_t data, AJ::JsonDocument &doc) {
     doc[s.id] = data;
@@ -114,6 +116,32 @@ void AnnounceTou(PubSubClient &client)
     client.publish("homeassistant/text/" INSTANCE "/tou/config", payload.c_str(), true);
 }
 
+void AnnounceGridChargingCurrent(PubSubClient &client)
+{
+    AJ::JsonDocument doc;
+    AddDevice(doc);
+
+    doc["name"] = "Grid Charging Current";
+    doc["unique_id"] = INSTANCE "_grid_charging_current";
+
+    doc["state_topic"] = TOPIC_GRID_CHARGING_CURRENT_STATE;
+    doc["command_topic"] = TOPIC_GRID_CHARGING_CURRENT_SET;
+
+    doc["min"] = 0;
+    doc["max"] = 60;
+    doc["step"] = 1;
+    doc["unit_of_measurement"] = "A";
+    doc["device_class"] = "current";
+    doc["entity_category"] = "config";
+    doc["mode"] = "slider";
+    doc["icon"] = "mdi:battery-charging-50";
+
+    std::string payload;
+    serializeJson(doc, payload);
+
+    client.publish("homeassistant/number/" INSTANCE "/grid_charging_current/config", payload.c_str(), true);
+}
+
 } //namespace;
 
 Inverter::Inverter(WiFiClient &wifi, ModbusMaster &node)
@@ -133,6 +161,7 @@ void Inverter::Setup()
         Inverter *self = reinterpret_cast<Inverter *>(ctx);
         self->QueryRegisters();
         self->QueryTou();
+        self->QueryGridChargingCurrent();
         return true;
     }, this);
 }
@@ -166,6 +195,7 @@ void Inverter::Reconnect()
         AnnounceSensor(sensor, _client);
     }
     AnnounceTou(_client);
+    AnnounceGridChargingCurrent(_client);
 
     //AnnounceCurrentSelect(_client);
     //AnnounceBulkVoltage(_client);
@@ -251,6 +281,23 @@ void Inverter::QueryTou()
     _client.publish(TOPIC_TOU_STATE, payload.c_str(), true);
 }
 
+namespace GridCharging {
+    constexpr uint16_t CURRENT = 230;
+}
+
+void Inverter::QueryGridChargingCurrent()
+{
+    if (_node.readHoldingRegisters(GridCharging::CURRENT, 1) == _node.ku8MBSuccess) {
+
+        const uint16_t current = _node.getResponseBuffer(0);
+
+        char payload[8];
+        snprintf(payload, sizeof(payload), "%u", current);
+
+        _client.publish(TOPIC_GRID_CHARGING_CURRENT_STATE, payload, true);
+    }
+}
+
 void Inverter::_HandleCallback(char* topic, byte* payload, unsigned int length)
 {
      if (!strcmp(topic, TOPIC_TOU_SET)) {
@@ -296,6 +343,26 @@ void Inverter::_HandleCallback(char* topic, byte* payload, unsigned int length)
          if (writeBlock(Tou::BASE + Tou::POWER, power) != _node.ku8MBSuccess) return;
          if (writeBlock(Tou::BASE + Tou::SOC, soc) != _node.ku8MBSuccess) return;
          writeBlock(Tou::BASE + Tou::FLAGS, flags);
+    } else if (!strcmp(topic, TOPIC_GRID_CHARGING_CURRENT_SET)) {
+        // MQTT number entities send the value as plain text.
+        char buffer[12];
+
+        if (length == 0 || length >= sizeof(buffer))
+            return;
+
+        memcpy(buffer, payload, length);
+        buffer[length] = '\0';
+
+        char *end;
+        unsigned long current = strtoul(buffer, &end, 10);
+
+        // Reject anything that wasn't a plain integer.
+        if (*end != '\0' || current > UINT16_MAX)
+            return;
+
+        _node.setTransmitBuffer(0, static_cast<uint16_t>(current));
+
+        _node.writeMultipleRegisters(GridCharging::CURRENT, 1);
     }
 
     //using ParserT = uint16_t (*)(const char *);
