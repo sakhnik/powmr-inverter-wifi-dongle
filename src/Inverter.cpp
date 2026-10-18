@@ -285,7 +285,7 @@ namespace Tou {
     constexpr uint8_t SOC   = 18;  // 268-273
     constexpr uint8_t FLAGS = 24;  // 274-279
 
-    constexpr uint8_t REG_COUNT = 26;
+    constexpr uint8_t REG_COUNT = 30;
     constexpr uint16_t CHARGE = 0x0001;
 }
 
@@ -298,7 +298,8 @@ void Inverter::QueryTou()
         for (size_t i = 0; i < Tou::SLOTS; ++i) {
             auto period = periods.add<AJ::JsonArray>();
 
-            period.add(_node.getResponseBuffer(Tou::FLAGS + i) & Tou::CHARGE);
+            auto flags = _node.getResponseBuffer(Tou::FLAGS + i);
+            period.add(flags & Tou::CHARGE);
             period.add(_node.getResponseBuffer(Tou::START + i));
             period.add(_node.getResponseBuffer(Tou::SOC + i));
             period.add(_node.getResponseBuffer(Tou::POWER + i));
@@ -347,49 +348,61 @@ void Inverter::QueryMaxChargingCurrent()
 
 void Inverter::_HandleCallback(char* topic, byte* payload, unsigned int length)
 {
-     if (!strcmp(topic, TOPIC_TOU_SET)) {
-         AJ::JsonDocument doc;
-         if (deserializeJson(doc, payload, length))
-             return;
+    if (!strcmp(topic, TOPIC_TOU_SET)) {
+        AJ::JsonDocument doc;
+        if (deserializeJson(doc, payload, length))
+            return;
 
-         auto table = doc.as<AJ::JsonArray>();
-         if (table.size() != Tou::SLOTS)
-             return;
+        auto table = doc.as<AJ::JsonArray>();
+        if (table.size() != Tou::SLOTS)
+            return;
 
-         uint16_t start[Tou::SLOTS];
-         uint16_t power[Tou::SLOTS];
-         uint16_t soc[Tou::SLOTS];
-         uint16_t flags[Tou::SLOTS];
+        uint16_t start[Tou::SLOTS];
+        uint16_t power[Tou::SLOTS];
+        uint16_t soc[Tou::SLOTS];
+        uint16_t flags[Tou::SLOTS];
 
-         // Preserve unknown flag bits.
-         if (_node.readHoldingRegisters(Tou::BASE + Tou::FLAGS, Tou::SLOTS) != _node.ku8MBSuccess)
-             return;
+        // Preserve unknown flag bits.
+        if (_node.readHoldingRegisters(Tou::BASE + Tou::FLAGS, Tou::SLOTS) != _node.ku8MBSuccess)
+            return;
 
-         for (size_t i = 0; i < Tou::SLOTS; ++i)
-             flags[i] = _node.getResponseBuffer(i);
+        for (size_t i = 0; i < Tou::SLOTS; ++i)
+            flags[i] = _node.getResponseBuffer(i);
 
-         for (size_t i = 0; i < Tou::SLOTS; ++i) {
-             auto row = table[i].as<AJ::JsonArray>();
+        for (size_t i = 0; i < Tou::SLOTS; ++i) {
+            auto row = table[i].as<AJ::JsonArray>();
 
-             bool charge = row[0];
-             start[i] = row[1];
-             soc[i] = row[2];
-             power[i] = row[3];
+            bool charge = row[0];
+            start[i] = row[1];
+            soc[i] = row[2];
+            power[i] = row[3];
 
-             flags[i] = (flags[i] & ~Tou::CHARGE) | (charge ? Tou::CHARGE : 0);
-         }
+            flags[i] = (flags[i] & ~Tou::CHARGE) | (charge ? Tou::CHARGE : 0);
+        }
 
-         auto writeBlock = [this](uint16_t reg, const uint16_t *values) {
-             _node.beginTransmission(reg);
-             for (size_t i = 0; i < Tou::SLOTS; ++i)
-                 _node.send(values[i]);
-             return _node.writeMultipleRegisters(reg, Tou::SLOTS);
-         };
+        auto writeBlock = [this](uint16_t reg, const uint16_t *values) {
+            _node.beginTransmission(reg);
+            for (size_t i = 0; i < Tou::SLOTS; ++i)
+                _node.send(values[i]);
+            return _node.writeMultipleRegisters(reg, Tou::SLOTS);
+        };
 
-         if (writeBlock(Tou::BASE + Tou::START, start) != _node.ku8MBSuccess) return;
-         if (writeBlock(Tou::BASE + Tou::POWER, power) != _node.ku8MBSuccess) return;
-         if (writeBlock(Tou::BASE + Tou::SOC, soc) != _node.ku8MBSuccess) return;
-         writeBlock(Tou::BASE + Tou::FLAGS, flags);
+        if (writeBlock(Tou::BASE + Tou::FLAGS, flags) != _node.ku8MBSuccess) {
+            _client.publish(INSTANCE "/debug", "Failed to write flags", true);
+            return;
+        }
+        if (writeBlock(Tou::BASE + Tou::START, start) != _node.ku8MBSuccess) {
+            _client.publish(INSTANCE "/debug", "Failed to write start", true);
+            return;
+        }
+        if (writeBlock(Tou::BASE + Tou::POWER, power) != _node.ku8MBSuccess) {
+            _client.publish(INSTANCE "/debug", "Failed to write power", true);
+            return;
+        }
+        if (writeBlock(Tou::BASE + Tou::SOC, soc) != _node.ku8MBSuccess) {
+            _client.publish(INSTANCE "/debug", "Failed to write SOC", true);
+            return;
+        }
     } else if (!strcmp(topic, TOPIC_GRID_CHARGING_CURRENT_SET)) {
         // MQTT number entities send the value as plain text.
         char buffer[12];
@@ -431,46 +444,4 @@ void Inverter::_HandleCallback(char* topic, byte* payload, unsigned int length)
 
         _node.writeMultipleRegisters(MaxCharging::CURRENT, 1);
     }
-
-    //using ParserT = uint16_t (*)(const char *);
-
-    //struct Setting
-    //{
-    //    const char *topic;
-    //    uint16_t reg;
-    //    ParserT parser;
-    //    const char *msg;
-    //};
-
-    //ParserT parseInt = [](const char *s) -> uint16_t {
-    //    return atoi(s);
-    //};
-
-    //ParserT parseFloat = [](const char *s) -> uint16_t {
-    //    return atof(s) * 10;
-    //};
-
-    //const Setting SETTINGS[] = {
-    //    {HA_SELECT_SET(MAX_CURRENT), 5022, parseInt, "current"},
-    //    {HA_NUMBER_SET(BULK_VOLTAGE), 5027, parseFloat, "bulk charging voltage"},
-    //    {HA_NUMBER_SET(FLOATING_VOLTAGE), 5028, parseFloat, "floating charge voltage"},
-    //    {HA_NUMBER_SET(DC_CUTOFF_VOLTAGE), 5029, parseFloat, "DC cutoff voltage"},
-    //};
-
-    //for (const auto &setting : SETTINGS) {
-    //    if (!strcmp(topic, setting.topic)) {
-    //        payload[length] = '\0';
-    //        uint16_t cc = setting.parser(reinterpret_cast<const char *>(payload));
-    //        for (int i = 0; i < 5; ++i) {
-    //            auto result = _node.writeSingleRegister(setting.reg, cc);
-    //            if (result == _node.ku8MBSuccess)
-    //                return;
-    //            char buf[64];
-    //            sprintf(buf, "Failed to change charge current: %x", (unsigned)result);
-    //            _client.publish(HA_DEBUG("log"), buf);
-    //        }
-    //        //_client.publish(publishTopicLog, buf);
-    //        return;
-    //    }
-    //}
 }
